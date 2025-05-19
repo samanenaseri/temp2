@@ -3,6 +3,9 @@ package com.xc.pay_print;
 import android.content.Context;
 import java.util.ArrayList;
 import java.util.List;
+import com.xxx.printerlib.POIPrinterManager;
+import com.xxx.printerlib.TextPrintLine;
+import com.xxx.printerlib.PrintLine;
 
 public class PrinterManager {
     private final POIPrinterManager printerManager;
@@ -17,11 +20,11 @@ public class PrinterManager {
         printerManager.open();
         printerManager.setPrintFont("/system/fonts/DroidSansMono.ttf");
         printerManager.setPrintGray(2000);
-        printerManager.setLineSpace(Integer.valueOf(2));
+        printerManager.setLineSpace(2);
         printerManager.cleanCache();
 
         List<TextPrintLine> printLines = new ArrayList<>();
-        
+
         for (String line : lines) {
             TextPrintLine textPrintLine = new TextPrintLine();
             textPrintLine.setType(PrintLine.TEXT);
@@ -36,7 +39,7 @@ public class PrinterManager {
         printerManager.beginPrint(new POIPrinterManager.IPrinterListener() {
             @Override
             public void onStart() {
-                // Print started
+                // Do something on start
             }
 
             @Override
@@ -50,4 +53,37 @@ public class PrinterManager {
             }
         });
     }
-} 
+
+    public void print() {
+        printerManager.open();
+        printerManager.setPrintFont("/system/fonts/DroidSansMono.ttf");
+        printerManager.setPrintGray(2000);
+        printerManager.setLineSpace(2);
+        printerManager.cleanCache();
+
+        TextPrintLine line = new TextPrintLine();
+        line.setType(PrintLine.TEXT);
+        line.setPosition(PrintLine.CENTER);
+        line.setSize(TextPrintLine.FONT_NORMAL);
+        line.setContent("Hello Printer!");
+
+        List<TextPrintLine> lines = new ArrayList<>();
+        lines.add(line);
+        printerManager.addPrintLine(lines);
+
+        printerManager.beginPrint(new POIPrinterManager.IPrinterListener() {
+            @Override
+            public void onStart() {}
+
+            @Override
+            public void onFinish() {
+                printerManager.close();
+            }
+
+            @Override
+            public void onError(int code, String msg) {
+                printerManager.close();
+            }
+        });
+    }
+}
