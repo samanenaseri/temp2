@@ -3,16 +3,20 @@ package com.xc.pay_print;
 import android.content.Context;
 import android.os.Bundle;
 import android.util.Log;
+import android.os.IBinder;
 
 import com.pos.sdk.emvcore.POIEmvCoreManager;
 import com.pos.sdk.emvcore.IPosEmvCoreListener;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
 
 import io.flutter.plugin.common.MethodChannel;
 
 public class PaymentManager {
+
     private static final String TAG = "PaymentManager";
     private final Context context;
     private final MethodChannel channel;
@@ -21,63 +25,64 @@ public class PaymentManager {
     public PaymentManager(Context context, MethodChannel channel) {
         this.context = context;
         this.channel = channel;
-        this.emvCoreManager = new POIEmvCoreManager(context);
-
-        Log.d(TAG, "PaymentManager initialized with POIEmvCoreManager");
+        this.emvCoreManager = POIEmvCoreManager.getDefault();
+        Log.d(TAG, "PaymentManager initialized with POIEmvCoreManager.");
     }
 
     public void startPayment(double amount) {
-        Log.d(TAG, "Starting EMV payment for amount: " + amount);
+        Log.d(TAG, "Starting payment for amount: " + amount);
 
-        emvCoreManager.startEmv(amount, new IPosEmvCoreListener() {
+        Bundle bundle = new Bundle();
+        bundle.putString("amount", String.valueOf((int) amount));
+
+        emvCoreManager.startTransaction(bundle, new IPosEmvCoreListener() {
             @Override
-            public void onTransactionResult(Bundle result) {
-                String resultCode = result.getString("resultCode");
-                String resultMsg = result.getString("resultMsg");
-
-                Log.d(TAG, "Transaction Result - Code: " + resultCode + ", Message: " + resultMsg);
-
-                if ("00".equals(resultCode)) {
-                    sendStatusToFlutter("success", resultMsg);
-                } else {
-                    sendStatusToFlutter("failed", resultMsg);
-                }
+            public void onEmvProcess(int type, Bundle bundle) {
+                Log.d(TAG, "EMV process started. Type: " + type);
+            }
+            @Override
+            public IBinder asBinder() {
+                return null; // یا یک Binder واقعی اگر SDK نیاز دارد
             }
 
             @Override
-            public void onEmvProcess(int code) {
-                Log.d(TAG, "EMV process code: " + code);
+            public void onSelectApplication(List<String> list, boolean isFirstSelect) {
+                Log.d(TAG, "Application selection requested.");
             }
 
             @Override
-            public void onSelectApplication(java.util.List<String> apps) {
-                Log.d(TAG, "Select Application callback");
-                // Optional: implement application selection
+            public void onConfirmCardInfo(int mode, Bundle bundle) {
+                Log.d(TAG, "Confirm card info requested.");
             }
 
-            @Override
-            public void onConfirmCardInfo(int type, String cardNo) {
-                Log.d(TAG, "Card Info Confirmed - Type: " + type + ", CardNo: " + cardNo);
-            }
 
-            @Override
-            public void onKernelType(int kernelType) {
-                Log.d(TAG, "Kernel Type: " + kernelType);
+            public void onKernelType(int type) {
+                Log.d(TAG, "Kernel type detected: " + type);
             }
 
             @Override
             public void onSecondTapCard() {
-                Log.d(TAG, "Second Tap Card required");
+                Log.d(TAG, "Second card tap requested.");
             }
 
             @Override
-            public void onRequestInputPin(Bundle data) {
-                Log.d(TAG, "PIN Input Requested");
+            public void onRequestInputPin(Bundle bundle) {
+                Log.d(TAG, "PIN input requested.");
             }
 
             @Override
-            public void onRequestOnlineProcess(Bundle data) {
-                Log.d(TAG, "Online Process Requested");
+            public void onRequestOnlineProcess(Bundle bundle) {
+                Log.d(TAG, "Online process requested.");
+            }
+
+            @Override
+            public void onTransactionResult(int result, Bundle bundle) {
+                Log.d(TAG, "Transaction completed. Result code: " + result);
+                if (result == 0) {
+                    sendStatusToFlutter("success", "Transaction Approved");
+                } else {
+                    sendStatusToFlutter("failed", "Transaction Failed with code: " + result);
+                }
             }
         });
     }
