@@ -3,9 +3,9 @@ package com.xc.pay_print;
 import android.content.Context;
 import java.util.ArrayList;
 import java.util.List;
-import com.xxx.printerlib.POIPrinterManager;
-import com.xxx.printerlib.TextPrintLine;
-import com.xxx.printerlib.PrintLine;
+import com.pos.sdk.printer.POIPrinterManager;
+import com.pos.sdk.printer.models.TextPrintLine;
+import com.pos.sdk.printer.models.PrintLine;
 
 public class PrinterManager {
     private final POIPrinterManager printerManager;
@@ -20,26 +20,22 @@ public class PrinterManager {
         printerManager.open();
         printerManager.setPrintFont("/system/fonts/DroidSansMono.ttf");
         printerManager.setPrintGray(2000);
-        printerManager.setLineSpace(2);
+        printerManager.setLineSpace(Integer.valueOf(10));
         printerManager.cleanCache();
-
-        List<TextPrintLine> printLines = new ArrayList<>();
 
         for (String line : lines) {
             TextPrintLine textPrintLine = new TextPrintLine();
             textPrintLine.setType(PrintLine.TEXT);
-            textPrintLine.setPosition(PrintLine.CENTER);
+            textPrintLine.setPosition(PrintLine.LEFT);
             textPrintLine.setSize(TextPrintLine.FONT_NORMAL);
             textPrintLine.setContent(line);
-            printLines.add(textPrintLine);
+            printerManager.addPrintLine(textPrintLine);
         }
-
-        printerManager.addPrintLine(printLines);
 
         printerManager.beginPrint(new POIPrinterManager.IPrinterListener() {
             @Override
             public void onStart() {
-                // Do something on start
+                // Print started
             }
 
             @Override
