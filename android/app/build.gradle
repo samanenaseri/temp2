@@ -41,6 +41,7 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+
     sourceSets {
         main {
             java.srcDirs += 'src/main/kotlin'
@@ -50,7 +51,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            // Remove signingConfig if not used
         }
     }
 }
@@ -60,7 +61,7 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.10"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.20"
     implementation platform('com.google.firebase:firebase-bom:32.0.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.stripe:stripe-android:20.0.0'

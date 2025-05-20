@@ -1,58 +1,93 @@
 package com.xc.pay_print;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.util.Log;
-import io.flutter.plugin.common.MethodChannel;
+
+import com.pos.sdk.emvcore.POIEmvCoreManager;
+import com.pos.sdk.emvcore.IPosEmvCoreListener;
+
 import java.util.HashMap;
 import java.util.Map;
 
-public class PaymentManager {
+import io.flutter.plugin.common.MethodChannel;
 
+public class PaymentManager {
     private static final String TAG = "PaymentManager";
     private final Context context;
-    private MethodChannel channel;
+    private final MethodChannel channel;
+    private final POIEmvCoreManager emvCoreManager;
 
     public PaymentManager(Context context, MethodChannel channel) {
         this.context = context;
         this.channel = channel;
-        // TODO: Initialize your P10 MP SDK here
-        // Consult your P10 MP SDK documentation for the correct initialization method.
-        Log.d(TAG, "PaymentManager initialized for P10 MP.");
+        this.emvCoreManager = new POIEmvCoreManager(context);
+
+        Log.d(TAG, "PaymentManager initialized with POIEmvCoreManager");
     }
 
-    // Method for initiating a payment
     public void startPayment(double amount) {
-        Log.d(TAG, "Attempting to start payment for amount: " + amount);
-        // TODO: Integrate your P10 MP SDK calls here to start a payment transaction.
-        // This will typically involve activating the card reader and waiting for card input.
-        // Consult your P10 MP SDK documentation for the specific method to start a transaction.
+        Log.d(TAG, "Starting EMV payment for amount: " + amount);
 
-        // Example: Call SDK method to start transaction (replace with actual SDK call)
-        // yourP10MPSDK.initiatePayment(amount, new PaymentListener() { ... });
+        emvCoreManager.startEmv(amount, new IPosEmvCoreListener() {
+            @Override
+            public void onTransactionResult(Bundle result) {
+                String resultCode = result.getString("resultCode");
+                String resultMsg = result.getString("resultMsg");
 
-        // *** REMOVE the simulated delay and logging below once you integrate the actual SDK calls ***
-        new android.os.Handler().postDelayed(
-            new Runnable() {
-                public void run() {
-                    Log.d(TAG, "Simulating successful P10 MP payment (REMOVE THIS LINE).");
-                    // In a real scenario, this method would be called from your P10 MP SDK's callback
-                    sendResultToFlutter("success", "Simulated P10 MP Payment Approved (REMOVE THIS LINE)");
+                Log.d(TAG, "Transaction Result - Code: " + resultCode + ", Message: " + resultMsg);
+
+                if ("00".equals(resultCode)) {
+                    sendStatusToFlutter("success", resultMsg);
+                } else {
+                    sendStatusToFlutter("failed", resultMsg);
                 }
-            },
-            3000 // Simulate a 3-second processing time (REMOVE THIS DELAY)
-        );
+            }
+
+            @Override
+            public void onEmvProcess(int code) {
+                Log.d(TAG, "EMV process code: " + code);
+            }
+
+            @Override
+            public void onSelectApplication(java.util.List<String> apps) {
+                Log.d(TAG, "Select Application callback");
+                // Optional: implement application selection
+            }
+
+            @Override
+            public void onConfirmCardInfo(int type, String cardNo) {
+                Log.d(TAG, "Card Info Confirmed - Type: " + type + ", CardNo: " + cardNo);
+            }
+
+            @Override
+            public void onKernelType(int kernelType) {
+                Log.d(TAG, "Kernel Type: " + kernelType);
+            }
+
+            @Override
+            public void onSecondTapCard() {
+                Log.d(TAG, "Second Tap Card required");
+            }
+
+            @Override
+            public void onRequestInputPin(Bundle data) {
+                Log.d(TAG, "PIN Input Requested");
+            }
+
+            @Override
+            public void onRequestOnlineProcess(Bundle data) {
+                Log.d(TAG, "Online Process Requested");
+            }
+        });
     }
 
-    // You might need other methods here depending on your SDK (e.g., for refund, void, settlement, checking device status)
-
-    // Method to send results back to Flutter
-    private void sendResultToFlutter(String status, String message) {
+    private void sendStatusToFlutter(String status, String message) {
         if (channel != null) {
             Map<String, Object> result = new HashMap<>();
             result.put("status", status);
             result.put("message", message);
-            // This invokes the _handleMethodCall method in your Flutter PaymentService
             channel.invokeMethod("onPaymentResult", result);
         }
     }
-} 
+}
