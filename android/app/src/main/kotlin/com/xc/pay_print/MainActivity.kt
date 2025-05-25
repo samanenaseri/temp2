@@ -1,20 +1,22 @@
 package com.xc.pay_print
 
 import android.os.Bundle
-import android.util.Log
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.util.Log
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
+
     private val CHANNEL = "com.xc.pay_print/printer"
     private val PAYMENT_CHANNEL = "com.xc.pay_print/payment"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        Log.d("MainActivity", "configureFlutterEngine called") // ✅ اضافه شده
+        Log.d("MainActivity", "configureFlutterEngine called ✅")
 
+        // Printer channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             val printerManager = PrinterManager(this)
 
@@ -32,11 +34,11 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Payment channel
         val paymentChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
         val paymentManager = PaymentManager(this, paymentChannel)
 
         paymentChannel.setMethodCallHandler { call, result ->
-            Log.d("MainActivity", "Flutter called: ${call.method}") // ✅ اضافه شده
             when (call.method) {
                 "startPayment" -> {
                     val amount = call.argument<Double>("amount") ?: 0.0
