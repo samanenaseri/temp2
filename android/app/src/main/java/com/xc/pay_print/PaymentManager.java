@@ -1,58 +1,118 @@
-package com.xc.pay_print
+package com.xc.pay_print;
 
-import android.os.Bundle
-import android.util.Log
-import io.flutter.embedding.android.FlutterFragmentActivity
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.MethodChannel
+import android.os.Bundle;
+import android.os.IBinder;
+import android.util.Log;
 
-class MainActivity : FlutterFragmentActivity() {
+import com.pos.sdk.emvcore.IPosEmvCoreListener;
+import com.pos.sdk.emvcore.POIEmvCoreManager;
+import com.pos.sdk.emvcore.PosEmvErrorCode;
 
-    private val PRINTER_CHANNEL = "com.xc.pay_print/printer"
-    private val PAYMENT_CHANNEL = "com.xc.pay_print/payment"
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        Log.d("MainActivity", "🔥 onCreate called")
+import io.flutter.plugin.common.MethodChannel;
+
+public class PaymentManager {
+
+    private static final String TAG = "PaymentManager";
+    private final MethodChannel channel;
+    private final POIEmvCoreManager emvCoreManager;
+
+
+    public PaymentManager(MethodChannel channel) {
+        this.channel = channel;
+        this.emvCoreManager = POIEmvCoreManager.getDefault(); // ✅ context removed
+        Log.d(TAG, "PaymentManager initialized with POIEmvCoreManager.");
     }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+    public void startPayment(double amount) {
+        Log.d(TAG, "startPayment called with amount: " + amount);
 
-        // Printer Channel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PRINTER_CHANNEL)
-                .setMethodCallHandler { call, result ->
-                val printerManager = PrinterManager(this)
-
-            when (call.method) {
-                "printReceipt" -> {
-                    val lines = call.argument<List<String>>("lines")?.toTypedArray()
-                            ?: arrayOf("Default line")
-                    printerManager.printReceipt(lines)
-                    result.success("Printed")
-                }
-                "print" -> {
-                    printerManager.print()
-                    result.success("Printed single line")
-                }
-                    else -> result.notImplemented()
-            }
+        if (emvCoreManager == null) {
+            Log.e(TAG, "emvCoreManager is NULL");
+            sendStatusToFlutter("failed", "EMV Core Manager not available");
+            return;
         }
 
-        // Payment Channel - فقط MethodChannel ارسال می‌شود
-        val paymentChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PAYMENT_CHANNEL)
-        val paymentManager = PaymentManager(paymentChannel)
+        Bundle bundle = new Bundle();
+        String formattedAmount = String.format("%012d", (int) (amount * 100)); // e.g., "000000010000"
+        bundle.putString("amount", formattedAmount);
 
-        paymentChannel.setMethodCallHandler { call, result ->
-                when (call.method) {
-            "startPayment" -> {
-                val amount = call.argument<Double>("amount") ?: 0.0
-                Log.d("MainActivity", "🔷 startPayment called with amount: $amount")
-                paymentManager.startPayment(amount)
-                result.success(null)
+        int resultCode = emvCoreManager.startTransaction(bundle, new IPosEmvCoreListener() {
+            @Override
+            public void onEmvProcess(int type, Bundle bundle) {
+                Log.d(TAG, "EMV process started. Type: " + type);
             }
-                else -> result.notImplemented()
+
+            @Override
+            public IBinder asBinder() {
+                return new android.os.Binder();
+            }
+
+            @Override
+            public void onSelectApplication(List<String> list, boolean isFirstSelect) {
+                Log.d(TAG, "Application selection requested.");
+            }
+
+            @Override
+            public void onConfirmCardInfo(int mode, Bundle bundle) {
+                Log.d(TAG, "Confirm card info requested.");
+            }
+
+            @Override
+            public void onKernelType(int type) {
+                Log.d(TAG, "Kernel type detected: " + type);
+            }
+
+            @Override
+            public void onSecondTapCard() {
+                Log.d(TAG, "Second card tap requested.");
+            }
+
+            @Override
+            public void onRequestInputPin(Bundle bundle) {
+                Log.d(TAG, "PIN input requested.");
+            }
+
+            @Override
+            public void onRequestOnlineProcess(Bundle bundle) {
+                Log.d(TAG, "Online process requested.");
+            }
+
+            @Override
+            public void onTransactionResult(int result, Bundle bundle) {
+                Log.d(TAG, "Transaction completed. Result code: " + result);
+                if (result == PosEmvErrorCode.EMV_OK) {
+                    sendStatusToFlutter("success", "Transaction Approved");
+                } else {
+                    String errorMessage = getErrorMessage(result);
+                    sendStatusToFlutter("failed", "Transaction Failed: " + errorMessage);
+                }
+            }
+        });
+
+        Log.d(TAG, "startTransaction returned code: " + resultCode);
+    }
+
+    private String getErrorMessage(int errorCode) {
+        switch (errorCode) {
+            case PosEmvErrorCode.EMV_DECLINED:
+                return "Transaction Declined";
+            case PosEmvErrorCode.EMV_TIMEOUT:
+                return "Transaction Timeout";
+            default:
+                return "Unknown Error (code: " + errorCode + ")";
         }
+    }
+
+    private void sendStatusToFlutter(String status, String message) {
+        if (channel != null) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", status);
+            result.put("message", message);
+            channel.invokeMethod("onPaymentResult", result);
         }
     }
 }
