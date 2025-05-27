@@ -1,118 +1,139 @@
 package com.xc.pay_print;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 
+import com.pos.sdk.cardreader.POICardManager;
+import com.pos.sdk.cardreader.PosMagCardReader;
 import com.pos.sdk.emvcore.IPosEmvCoreListener;
 import com.pos.sdk.emvcore.POIEmvCoreManager;
 import com.pos.sdk.emvcore.PosEmvErrorCode;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import io.flutter.plugin.common.MethodChannel;
+import com.pos.sdk.security.POIHsmManage;
+import com.pos.sdk.security.PedKeyInfo;
+import com.pos.sdk.security.PedKcvInfo;
+import com.pos.sdk.utils.PosUtils; // جایگزین HexUtil
+
 
 public class PaymentManager {
 
     private static final String TAG = "PaymentManager";
     private final MethodChannel channel;
     private final POIEmvCoreManager emvCoreManager;
+    private final Context context;
 
-
-    public PaymentManager(MethodChannel channel) {
+    public PaymentManager(MethodChannel channel, Context context) {
         this.channel = channel;
-        this.emvCoreManager = POIEmvCoreManager.getDefault(); // ✅ context removed
-        Log.d(TAG, "PaymentManager initialized with POIEmvCoreManager.");
+        this.context = context;
+        this.emvCoreManager = POIEmvCoreManager.getDefault();
+        Log.d(TAG, "PaymentManager initialized.");
     }
 
     public void startPayment(double amount) {
-        Log.d(TAG, "startPayment called with amount: " + amount);
+        try {
+            POICardManager cardManager = POICardManager.getDefault(context);
+            POIHsmManage hsmManage = POIHsmManage.getDefault();
 
-        if (emvCoreManager == null) {
-            Log.e(TAG, "emvCoreManager is NULL");
-            sendStatusToFlutter("failed", "EMV Core Manager not available");
-            return;
-        }
+            // ✅ ست کردن کلید DUKPT
+            byte[] key = hexStringToByteArray("0123456789ABCDEF0123456789ABCDEF");
+            byte[] ksn = hexStringToByteArray("FFFF9080102495000001");
 
-        Bundle bundle = new Bundle();
-        String formattedAmount = String.format("%012d", (int) (amount * 100)); // e.g., "000000010000"
-        bundle.putString("amount", formattedAmount);
+            PedKcvInfo kcvInfo = new PedKcvInfo(0, new byte[5]);
 
-        int resultCode = emvCoreManager.startTransaction(bundle, new IPosEmvCoreListener() {
-            @Override
-            public void onEmvProcess(int type, Bundle bundle) {
-                Log.d(TAG, "EMV process started. Type: " + type);
+            int dukptResult = hsmManage.PedWriteTIK(
+                    1, 0, key.length, key, ksn, kcvInfo
+            );
+            Log.d(TAG, "🔐 PedWriteTIK result: " + dukptResult);
+
+            // باز کردن کارت‌خوان در حالت ENCRYPT_ZIOSK
+            PosMagCardReader magCardReader = cardManager.getMagCardReader();
+            int openResult = magCardReader.open(
+                    PosMagCardReader.CARDREADER_DATA_TYPE_ENCRYPT_ZIOSK,
+                    PosMagCardReader.CARDREADER_KEY_TYPE_DUKPT_DATA_REQUEST,
+                    1,
+                    PosMagCardReader.CARDREADER_MODE_ECB,
+                    (byte) 0x30,
+                    null
+            );
+
+            if (openResult != 0) {
+                sendStatusToFlutter("failed", "Failed to open card reader");
+                return;
             }
 
-            @Override
-            public IBinder asBinder() {
-                return new android.os.Binder();
-            }
+            Thread.sleep(300);
 
-            @Override
-            public void onSelectApplication(List<String> list, boolean isFirstSelect) {
-                Log.d(TAG, "Application selection requested.");
-            }
+            new Thread(() -> {
+                try {
+                    Log.d(TAG, "🚀 Detect thread started");
 
-            @Override
-            public void onConfirmCardInfo(int mode, Bundle bundle) {
-                Log.d(TAG, "Confirm card info requested.");
-            }
+                    int maxTries = 10; // یعنی حدود 3 ثانیه (10 * 300ms)
+                    int tryCount = 0;
 
-            @Override
-            public void onKernelType(int type) {
-                Log.d(TAG, "Kernel type detected: " + type);
-            }
+                    while (tryCount < maxTries) {
+                        int detectResult = magCardReader.detect();
+                        Log.d(TAG, "📥 detect() try " + tryCount + ": " + detectResult);
 
-            @Override
-            public void onSecondTapCard() {
-                Log.d(TAG, "Second card tap requested.");
-            }
+                        if (detectResult == 0) {
+                            byte[] trackData = magCardReader.getTraceData(PosMagCardReader.CARDREADER_TRACE_INDEX_2);
+                            if (trackData != null) {
+                                String cardInfo = new String(trackData);
+                                sendStatusToFlutter("success", "Card read: " + cardInfo);
+                            } else {
+                                sendStatusToFlutter("failed", "Track data is null");
+                            }
 
-            @Override
-            public void onRequestInputPin(Bundle bundle) {
-                Log.d(TAG, "PIN input requested.");
-            }
+                            magCardReader.close();
+                            return;
+                        }
 
-            @Override
-            public void onRequestOnlineProcess(Bundle bundle) {
-                Log.d(TAG, "Online process requested.");
-            }
+                        tryCount++;
+                        Thread.sleep(300); // صبر بین هر تلاش
+                    }
 
-            @Override
-            public void onTransactionResult(int result, Bundle bundle) {
-                Log.d(TAG, "Transaction completed. Result code: " + result);
-                if (result == PosEmvErrorCode.EMV_OK) {
-                    sendStatusToFlutter("success", "Transaction Approved");
-                } else {
-                    String errorMessage = getErrorMessage(result);
-                    sendStatusToFlutter("failed", "Transaction Failed: " + errorMessage);
+                    sendStatusToFlutter("failed", "No card detected after timeout");
+                    magCardReader.close();
+
+                } catch (Exception e) {
+                    Log.e(TAG, "💥 Exception during detect loop: " + e.getMessage());
+                    sendStatusToFlutter("failed", "Exception: " + e.getMessage());
                 }
-            }
-        });
+            }).start();
 
-        Log.d(TAG, "startTransaction returned code: " + resultCode);
-    }
 
-    private String getErrorMessage(int errorCode) {
-        switch (errorCode) {
-            case PosEmvErrorCode.EMV_DECLINED:
-                return "Transaction Declined";
-            case PosEmvErrorCode.EMV_TIMEOUT:
-                return "Transaction Timeout";
-            default:
-                return "Unknown Error (code: " + errorCode + ")";
+        } catch (Exception e) {
+            Log.e(TAG, "💥 Exception in startPayment: " + e.getMessage());
+            sendStatusToFlutter("failed", "Exception in startPayment: " + e.getMessage());
         }
     }
 
+
+
+
+    private byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                    + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
+    }
     private void sendStatusToFlutter(String status, String message) {
         if (channel != null) {
             Map<String, Object> result = new HashMap<>();
             result.put("status", status);
             result.put("message", message);
-            channel.invokeMethod("onPaymentResult", result);
+
+            // ⛳ اجرای روی main thread
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                channel.invokeMethod("onPaymentResult", result);
+            });
         }
     }
 }

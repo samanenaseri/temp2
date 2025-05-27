@@ -49,6 +49,13 @@ android {
         }
     }
 
+    // ✅ اضافه‌شده برای پشتیبانی از .aar در libs
+    repositories {
+        flatDir {
+            dirs 'libs'
+        }
+    }
+
     buildTypes {
         release {
             // Optional signingConfig or proguard rules
@@ -65,5 +72,8 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:32.0.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.stripe:stripe-android:20.0.0'
+
+    // 👇 این خط همه فایل‌های .jar داخل libs رو لود می‌کنه از جمله classes-2.1.17.jar
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
+

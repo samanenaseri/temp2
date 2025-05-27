@@ -19,7 +19,7 @@ public class PaymentPlugin implements FlutterPlugin, MethodCallHandler {
     public void onAttachedToEngine(@NonNull FlutterPlugin.FlutterPluginBinding binding) {
         channel = new MethodChannel(binding.getBinaryMessenger(), "com.xc.pay_print/payment");
         channel.setMethodCallHandler(this);
-        paymentManager = new PaymentManager(channel);
+        paymentManager = new PaymentManager(channel, binding.getApplicationContext());
         Log.d(TAG, "PaymentPlugin attached to engine.");
     }
 
